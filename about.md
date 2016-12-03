@@ -4,12 +4,11 @@ title: About
 permalink: /about/
 ---
 
-This is the base Jekyll theme. You can find out more info about customizing your Jekyll theme, as well as basic Jekyll usage documentation at [jekyllrb.com](http://jekyllrb.com/)
+My name is Julian Engelhardt. I am a software developer who mainly works on backend and cloud infrastructures in a DevOps-like way, but also does mobile and front-end development.
 
-You can find the source code for the Jekyll new theme at:
-{% include icon-github.html username="jekyll" %} /
-[minima](https://github.com/jekyll/minima)
+Currently I am the lead dev of the IoT cloud platform of a german temperature controller manufacturer.
 
-You can find the source code for Jekyll at
-{% include icon-github.html username="jekyll" %} /
-[jekyll](https://github.com/jekyll/jekyll)
+You can also find me on [Twitter][twitter] and [GitHub][github].
+
+[twitter]: https://twitter.com/oxygen0211
+[github]: https://github.com/oxygen0211
