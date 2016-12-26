@@ -13,7 +13,7 @@ During the last one and a half years or so I gave up or altered most of the trac
 
 When starting to follow this approach I could almost immediately see my weight and body fat decrease. However, I could also see significant swings in my progress as fast. This got me my scratching my head quite a bit and one thought struck me: I consider myself to have quite some understanding for cloud-, application- and serversystems and how to methodically and monitor performance and analyse problems. However, this is not so true for understanding my body and its metabolic processes. Which are the factors that speed up or slow down my fat metabolism with seemingly consistent inputs? Building on top of this, some other thoughts came up. Can we adopt the approaches we use for analyzing logs, events and (cloud) system performance on health data? I started researching apps and services to reveal correlation between different kinds of health data but couldn't find what I was looking for, so I decided to build a prototype to see if this approach is able to give some insight and reveal some patterns.
 
-# Gaining data
+# Getting the data
 To do any analysis, we of course need data, so let's start with bringing the information we want to source to the digital world. Since tracking health data can be tedious, I only try to restrict it to only the data that is helpful for me. In general, I use two different systems to track different health aspects:
 
 ## Weight and body composition: Withings
