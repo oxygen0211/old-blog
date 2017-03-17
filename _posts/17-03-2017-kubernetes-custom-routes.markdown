@@ -58,5 +58,7 @@ The eni-redated\* are instance IDs i-redacted\* are interface IDs. The implicati
 
 With this configuration, we can route packages from every container in the cluster to every other. However, we still need to know the exact IP of the container and since this tends to change a lot (and I don't want to get paged in the middle of the night just to update one stupid little IP in the routing table), let's keep on digging. Fortunately, K8s comes with a component that helps us decouple the reference of a given SET OF CONTAINERS from their actual assigned address...
 
-### Kubernetes Services
+### Kubernetes services
+Kubernetes services are nice components for cutting hard references between Kubernetes Pods and - by this - Docker containers. Speaking in non-Kubernetes-lingo, a service is a reverse proxy/load balancer. Instead of accessing a container of a Pod directly, a host calls the service which holds reference to one or more containers, picks one and forwards the request. By this, we can create, delete and scale pods up and down without having to change the references all the time. Horizontally scaling components by running several instances would also be very hard if we didn't have services (or loadbalancers in general). Let's dig into how they are integrated into the cluster network to see how we can leverage services for our custom route.
+
 
