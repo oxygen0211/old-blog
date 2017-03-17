@@ -41,3 +41,22 @@ If a node does not have a specific route configured to a host, it will try to ac
 This means we are acesing 172.20.0.1 which is the gateway of the Kubernetes VPC if we don't have any other routing information. This means all calls to container IPs not in the own docker subnet, it will be propagated into the VPC.
 
 Now, to make the containers accessible inside the whole cluster, K8s has to repeat setting the subnet routes just one level higher in our network topology. Enter VPC routing tables.
+
+If we go to the AWS VPC management console, under Route-Tables, we will see at least one route table that is connected to kubernetes-vpc. In the "Routes" tab, we will see something like this:
+
+Destination   | Target                      | Status | Propagated
+172.20.0.0/16 | local                       | Active | No
+0.0.0.0/0     |	igw-redacted	              | Active | No
+10.244.0.0/24 | eni-redacted1 / i-redacted1 | Active | No
+10.244.1.0/24 | eni-redacted2 / i-redacted2 | Active | No
+10.246.0.0/24 | eni-redacted3 / i-redacted3 | Active | No
+
+The eni-redated\* are instance IDs i-redacted\* are interface IDs. The implications of this table are the following:
+- Everything that's addressed to 172.20.0.0/16 (our kubernetes VPC net) gets forwarded within the VPC
+- Everything that isn't caught by any other rule is forwarded to the VPCs internet gateway and goes outside of the VPC
+- Everything that's addressed to 10.244.0.0/24, 10.244.1.0/24 and 10.246.0.0/24 (do these look familiar?) is routed to a specific host which are the masters and nodes in our Kubernetes cluster.
+
+With this configuration, we can route packages from every container in the cluster to every other. However, we still need to know the exact IP of the container and since this tends to change a lot (and I don't want to get paged in the middle of the night just to update one stupid little IP in the routing table), let's keep on digging. Fortunately, K8s comes with a component that helps us decouple the reference of a given SET OF CONTAINERS from their actual assigned address...
+
+### Kubernetes Services
+
