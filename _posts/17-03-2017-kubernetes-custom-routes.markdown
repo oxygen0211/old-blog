@@ -1,60 +1,61 @@
 # Addin custom routes to Kubernetes on AWS
 
-At my day job, I am running in IoT cloud setup which of course includes connecting devices on customer site. Some features also include connecting to the device from within the cloud. To do this in a secure way, we are connecting the devices over VPN. We are using OpenVPN server, which is deployed as a Pod in Kubernetes. The component which acts as an entrypoint to the devices from the user side, we have a custom service that is basically an HTTP-Proxy but with some domain specific behavior, so it needs to be able to forward incoming HTTP calls to the device over VPN. This leads to the question about how to properly connect the Proxy to the VPN. In general, we have need to push an IP route to the Proxy pod that tells it to route all packets that need to go to our VPN net over the VPN server.
+At my day job, I am running in IoT cloud setup which includes connecting devices located on customer sites. Some features require initiating a connecting to the device from within the cloud services. To do this in a secure way, we are connecting the devices over VPN. For this, we have deployed an OpenVPN server as a Pod in Kubernetes. The component which acts as a gateway from a client to the devices is basically an HTTP-Proxy with some additional domain specific behavior, so it needs to be able to forward incoming HTTP calls to the device over VPN, which means that within our Kubernetes cluster we need to configure a route on IP level that lets the Proxy Pod route packets to the VPN net over the VPN Server pod.
 
-One idea would be to just make the Proxy component a VPN client. However, since we already have a connection between the services via the Kubernetes cluster network, this kind of feels wrong. We are adding unneccessary overhead to the services, what could bite us in the future. The cleaner solution would be to add an additional route to the pod (or the cluster network in general) to forward packets destined to the VPN net to the VPN server.
+One idea to implement this would be to just make the Proxy component a VPN client. However, since we already have a connection between the services via the Kubernetes cluster network, this kind of feels wrong. We are adding unneccessary overhead to the services and that could bite us in the future. Also it's just bad practice to use VPN (or some other remote connection protocol) where it isn't needed. The cleaner solution would be to add the needed route on cluster network level to forward packets destined to the VPN accordingly.
 
-## Implementation
+## Functional Base
 For finding our way to the problem's solution, we have a to look into how the single components and networking layers work. 
 
-Our cluster is deployed using the AWS-Adapter of Kube-Up, so we have a relatively standard way of deploying:
+Our cluster is deployed using the AWS-Adapter of kube-up, so we have a pretty standard deployment:
 - The cluster is encapsulated in its own VPC. Each node has its own subnet for the containers it is running. 
-  These subnets resembled in routing table entries on the VPC's route tables.
+  These subnets are connected via routing table entries on the VPC's route tables.
   
- - Kubelet is running as a linux service, all other central Kubernetes components like kube-controller, kube-scheduler, etcd and kube-proxy are deployed as containers
+ - Kubelet is running as a linux service, all other central Kubernetes components like kube-controller, kube-scheduler, etcd and kube-proxy are deployed as containers.
  
- To get a better idea how we can add our custom route in the most stable way, let's look at how the networking layers interact with each other to find a proper entrypoint.
+ To get a better idea how we can add our custom route in the most stable way, let's look at how the single Kubernetes components interact on a networking point of view.
  
  ### Node container network and VPC
- Let's begin at the most basic level. How do the containers (regardless of Pods, services etc) expose their connections to the outside and how do we break node boundaries in our AWS setup.
+ Let's begin at the least abstract level. How do the actual containers running on the nodes expose their connections to the outside and how do we break node boundaries in our AWS setup?
+ 
  Especially for the second part of this question the answer varies on the cluster networking solution you are using (e.g. Flannel has other configurations than VPC), but the basic principles should be the same (or at least similar).
  
- On a node level, all containers started within the cluster get attached to a bridge docker net (in our case called cbr0). Ifconfig for the interfaces shows us an interface which is configured something like this:
- inet addr:10.244.1.1  Bcast:0.0.0.0  Mask:255.255.255.0
+ On a node level, all containers started within the cluster get attached to a bridge docker net (cbr0). `Ifconfig` for the interfaces shows us an interface which is configured something like this:
+`inet addr:10.244.1.1  Bcast:0.0.0.0  Mask:255.255.255.0
  
- and route -n shows us a matching routing entry so that the containers inside this net are available to the outer world:
- 10.244.1.0      0.0.0.0         255.255.255.0   U     0      0        0 cbr0
+ and `route -n` shows us a matching routing entry so that the containers inside this net are available to the outer world: `10.244.1.0      0.0.0.0         255.255.255.0   U     0      0        0 cbr0`
  
  The CIDR of these subnets is unique on every node.
  
  So, what does this mean for communication to containers from outside of the nodes?
  - Containers are running inside their own subnet on a bridge interface of the host. Just as in your standard docker installation.
- - However, our K8s Node has additional routing information that tells it to forward every packet it receives for the docker subnet to the bridge network. By this every host can communicate as long as it sends the packets to the correct node.
+ - However, our K8s Node has additional routing information that tells it to forward every packet it receives for the docker subnet to the bridge network. By this every host can communicate with the containers as long as it sends the packets to the correct node.
 
-If a node does not have a specific route configured to a host, it will try to access it over the default gateway. route -n also tells us about this:
-0.0.0.0         172.20.0.1      0.0.0.0         UG    0      0        0 eth0
+If a node does not have a specific route configured to a host, it will try to access it over the default gateway. `route -n` also tells us about this:
+`0.0.0.0         172.20.0.1      0.0.0.0         UG    0      0        0 eth0`
 
-This means we are acesing 172.20.0.1 which is the gateway of the Kubernetes VPC if we don't have any other routing information. This means all calls to container IPs not in the own docker subnet, it will be propagated into the VPC.
+This means that if we don't have any other routing information, we are routing to 172.20.0.1, which is the gateway of the Kubernetes VPC, so for all calls to container IPs not in the own docker subnet of a node will be routed into the VPC.
 
-Now, to make the containers accessible inside the whole cluster, K8s has to repeat setting the subnet routes just one level higher in our network topology. Enter VPC routing tables.
+With this configuration on each node, all calls to Containers that have to cross node boundaries forwarded to the VPC. All K8s has to do to else is tell the default gateway which subnet is connected to which node so it routes the packages correctly. Basically, this is the same configuration as above, but now on VPC level instead of on the linux hosts.
 
-If we go to the AWS VPC management console, under Route-Tables, we will see at least one route table that is connected to kubernetes-vpc. In the "Routes" tab, we will see something like this:
+If we go to the AWS VPC management console, under Route-Tables we will see at least one route table that is connected to kubernetes-vpc. In the "Routes" tab, we will see something like this:
 
-Destination   | Target                      | Status | Propagated
-172.20.0.0/16 | local                       | Active | No
-0.0.0.0/0     |	igw-redacted	              | Active | No
-10.244.0.0/24 | eni-redacted1 / i-redacted1 | Active | No
-10.244.1.0/24 | eni-redacted2 / i-redacted2 | Active | No
-10.246.0.0/24 | eni-redacted3 / i-redacted3 | Active | No
+|Destination   | Target                      | Status | Propagated |
+|--------------|:---------------------------:|:------:|-----------:|
+|172.20.0.0/16 | local                       | Active | No         |
+|0.0.0.0/0     |	igw-redacted	             | Active | No        |
+|10.244.0.0/24 | eni-redacted1 / i-redacted1 | Active | No         |
+|10.244.1.0/24 | eni-redacted2 / i-redacted2 | Active | No         |
+|10.246.0.0/24 | eni-redacted3 / i-redacted3 | Active | No         |
 
-The eni-redated\* are instance IDs i-redacted\* are interface IDs. The implications of this table are the following:
+The eni-redated\* entries are instance IDs, i-redacted\* entries are interface IDs. The implications of this table are the following:
 - Everything that's addressed to 172.20.0.0/16 (our kubernetes VPC net) gets forwarded within the VPC
 - Everything that isn't caught by any other rule is forwarded to the VPCs internet gateway and goes outside of the VPC
-- Everything that's addressed to 10.244.0.0/24, 10.244.1.0/24 and 10.246.0.0/24 (do these look familiar?) is routed to a specific host which are the masters and nodes in our Kubernetes cluster.
+- Everything that's addressed to 10.244.0.0/24, 10.244.1.0/24 and 10.246.0.0/24 (the node specific Docker subnets) is routed to a specific host which are the masters and nodes in our Kubernetes cluster.
 
-With this configuration, we can route packages from every container in the cluster to every other. However, we still need to know the exact IP of the container and since this tends to change a lot (and I don't want to get paged in the middle of the night just to update one stupid little IP in the routing table), let's keep on digging. Fortunately, K8s comes with a component that helps us decouple the reference of a given SET OF CONTAINERS from their actual assigned address...
+With this configuration, we can route packages from every container in the cluster to every other. However, we still need to know the exact IP of the container we want to route to. Since Pods and their containers tend to often be destroyed and recreated (and I don't want to get paged in the middle of the night just to update one stupid little IP in the routing table), let's keep on digging to find a more solid base. Fortunately, K8s comes with a component that helps us decouple the reference of a given SET OF CONTAINERS from their actual assigned address...
 
 ### Kubernetes services
-Kubernetes services are nice components for cutting hard references between Kubernetes Pods and - by this - Docker containers. Speaking in non-Kubernetes-lingo, a service is a reverse proxy/load balancer. Instead of accessing a container of a Pod directly, a host calls the service which holds reference to one or more containers, picks one and forwards the request. By this, we can create, delete and scale pods up and down without having to change the references all the time. Horizontally scaling components by running several instances would also be very hard if we didn't have services (or loadbalancers in general). Let's dig into how they are integrated into the cluster network to see how we can leverage services for our custom route.
+Kubernetes services are nice components for cutting hard references between Pods and - by this - Docker containers. Speaking in more general terms, a service is a reverse proxy/load balancer. Instead of accessing a container of a Pod directly, a host calls the service which holds reference to one or more containers, picks one and forwards the request. By this, we can create and delete pods up and down without having to change the references all the time. Horizontally scaling components by running several instances would also be very hard if we didn't have services (or loadbalancers in general). Let's dig into how they are integrated into the cluster network to see how we can leverage services for our custom route.
 
 
