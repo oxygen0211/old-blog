@@ -1,4 +1,4 @@
-# Addin custom routes to Kubernetes on AWS
+# Adding custom routes to Kubernetes on AWS
 
 At my day job, I am running in IoT cloud setup which includes connecting devices located on customer sites. Some features require initiating a connecting to the device from within the cloud services. To do this in a secure way, we are connecting the devices over VPN. For this, we have deployed an OpenVPN server as a Pod in Kubernetes. The component which acts as a gateway from a client to the devices is basically an HTTP-Proxy with some additional domain specific behavior, so it needs to be able to forward incoming HTTP calls to the device over VPN, which means that within our Kubernetes cluster we need to configure a route on IP level that lets the Proxy Pod route packets to the VPN net over the VPN Server pod.
 
