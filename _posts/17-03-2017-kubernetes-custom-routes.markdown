@@ -58,4 +58,27 @@ With this configuration, we can route packages from every container in the clust
 ### Kubernetes services
 Kubernetes services are nice components for cutting hard references between Pods and - by this - Docker containers. Speaking in more general terms, a service is a reverse proxy/load balancer. Instead of accessing a container of a Pod directly, a host calls the service which holds reference to one or more containers, picks one and forwards the request. By this, we can create and delete pods up and down without having to change the references all the time. Horizontally scaling components by running several instances would also be very hard if we didn't have services (or loadbalancers in general). Let's dig into how they are integrated into the cluster network to see how we can leverage services for our custom route.
 
+The networking for services happens on each Node in kube-proxy. Kube-Proxy has two modes: IPTables where it will render service routings into IPTables rules so each call to a service will get routed on a node level automatically or userspace mode where it intercepts calls and actively forwards calls to services. In our case we are using the IPTables version, so we'll have a closer look into this.
+
+For knowing when a service has been created, modified or deleted, it polls the API server for change events and holds an internal service map with all service information to determine what to change in order to render the service correctly to routing rules. 
+
+The services are rendered as NAT rules on the nodes, so `iptables -t nat -L` will show us what's under the hood. We will get a whole lot of rules that resemble all the services in the cluster, but in essence this example shows what's going on:
+`Chain KUBE-SEP-7ZAB4MEUNQGISTVW (1 references)
+target     prot opt source               destination
+KUBE-MARK-MASQ  all  --  aws-ip.aws-region.internal  anywhere             /* kube-system/kubernetes-dashboard: */
+DNAT       tcp  --  anywhere             anywhere             /* kube-system/kubernetes-dashboard: */ tcp to:10.244.1.11:9090
+
+Chain KUBE-SERVICES (2 references)
+target     prot opt source               destination
+KUBE-MARK-MASQ  tcp  -- !pod-hosting-node-ip.pod-hosting-node-region.internal/16  ip-10-0-91-181.aws-region.compute.internal  /* kube-system/kubernetes-dashboard: cluster IP */ tcp dpt:http
+KUBE-SVC-XGLOHA7QRQ3V22RZ  tcp  --  anywhere             ip-10-0-91-181.aws-region.compute.internal  /* kube-system/kubernetes-dashboard: cluster IP */ tcp dpt:http
+
+Chain KUBE-SVC-XGLOHA7QRQ3V22RZ (1 references)
+target     prot opt source               destination
+KUBE-SEP-7ZAB4MEUNQGISTVW  all  --  anywhere             anywhere             /* kube-system/kubernetes-dashboard: */`
+
+There are alo a some more general roules that handle prerouting, postrouting and general access to the Docker and Kubernetes nets but since I'm no expert for NAT or networking, I spare us the embarrassment of a deep dive. In general, the three chains above are the ones that do the work of mapping the internal clusterIP of the service (in this case 10.0.91.181) to the Kubernetes net IP of the Pod (in this case 10.244.1.11) for the kubernetes-dashboard service.
+
+For our routing to the VPN IPs, we want to add similar rules for the VPN net that point to the VPN Server pod. We just have to find an elegant way to implement this...
+
 
