@@ -85,4 +85,13 @@ There are alo a some more general roules that handle prerouting, postrouting and
 
 For our routing to the VPN IPs, we want to add similar rules for the VPN net that point to the VPN Server pod. We just have to find an elegant way to implement this...
 
+##Implementing custom route mechanism
+The probably least intrusive way of adding our desired route to the cluster network is building an own component that combines the basic mechanisms described above and adds addional routes accordingly. The approach we take for this is the following:
 
+1. We will deploy and own compnent as a Daemon-Set so it runs on each node
+2. In a config file, we will be able to suply a list of subnets and the Kubernetes-Servicenames they should be routed to
+3. Our new component will periodically poll the Kubernetes API for Endpoint changes to the configured services and keep the routing table entries up to date on a node level. 
+
+This approach allows us to very precisely control which routes will be added and makes us independent from any other components. Since we will be making the routing on a node level, the same way we are doing the kubernetes container net to the outer world, we will be independent from infrastructure and cluster networking solutions, so we should be able to use this in a broad number of different setups.
+
+The implementation for this is located at https://github.com/oxygen0211/kubernetes-net-router. Contributions are very welcome.
