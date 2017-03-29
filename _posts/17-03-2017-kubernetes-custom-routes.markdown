@@ -39,7 +39,7 @@ If a node does not have a specific route configured to a host, it will try to ac
 ```
 
 This means that if we don't have any other routing information, we are routing to 172.20.0.1, which is the gateway of the VPC.
-With this configuration on each node, all calls to Containers that have to cross node boundaries will be forwarded to the VPC. K8s still has to do is tell the default gateway which subnet is connected to which node so it routes the packages correctly. Basically, this is the same configuration as above, but now on VPC level instead of the nodes.
+With this configuration on each node, all calls to Containers that have to cross node boundaries will be forwarded to the VPC. K8s (or more precisely kube-up) still has to do is tell the default gateway which subnet is connected to which node so it routes the packages correctly. Basically, this is the same configuration as above, but now on VPC level instead of the nodes.
 
 If we go to the AWS VPC management console, under Route-Tables we will see at least one route table that is connected to kubernetes-vpc. In the "Routes" tab, we will see something like this:
 
@@ -51,12 +51,12 @@ If we go to the AWS VPC management console, under Route-Tables we will see at le
 |10.244.1.0/24 | eni-redacted2 / i-redacted2 | Active | No         |
 |10.246.0.0/24 | eni-redacted3 / i-redacted3 | Active | No         |
 
-The eni-redated\* entries are instance IDs, i-redacted\* entries are interface IDs. This table configures the following behavior:
+The eni-redacted\* entries are instance IDs, i-redacted\* entries are interface IDs. This table configures the following behavior:
 - Everything that's addressed to 172.20.0.0/16 (our kubernetes VPC net) gets forwarded within the VPC
 - Everything that isn't caught by any other rule is forwarded to the VPCs internet gateway and goes outside of the VPC
 - Everything that's addressed to 10.244.0.0/24, 10.244.1.0/24 and 10.246.0.0/24 (the node specific Docker subnets) is routed to a specific host which are the masters and nodes in our cluster.
 
-With this configuration, we can route packages from every container in the cluster to every other. However, with this, we still need to know the exact IP of the container we want to route to. Since Pods and their containers tend to often be destroyed and recreated and I don't want to get paged in the middle of the night just to update one little IP in the routing table after a Pod restart, let's keep on digging to find a more solid base. 
+With this configuration, we can route packages from every container in the cluster to every other, no matter of the node they are located on. However, we still need to know the exact IP of the container we want to route to. Since Pods and their containers tend to be destroyed and recreated and thus get assigned new IPs frequently (and I don't want to get paged in the middle of the night just to update one IP in the routing table after a Pod restart), let's keep on digging to find a more solid base. 
 
 Fortunately, K8s comes with a component that helps us decouple the reference of a given set of containers from their actual address on the docker subnet...
 
