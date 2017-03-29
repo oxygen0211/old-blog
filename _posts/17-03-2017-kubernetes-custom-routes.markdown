@@ -21,9 +21,14 @@ This is the least abstract level of our Pods. How do the actual containers runni
 Especially for the second part of this question the answer varies on the cluster networking solution you are using (e.g. Flannel has other configurations than VPC), but the basic principles should be the same (or at least similar).
  
 On a node level, all containers started within the cluster get attached to a bridge docker net (cbr0). `Ifconfig` for the interfaces shows us an interface which is configured something like this:
-`inet addr:10.244.1.1  Bcast:0.0.0.0  Mask:255.255.255.0`
+```
+inet addr:10.244.1.1  Bcast:0.0.0.0  Mask:255.255.255.0
+```
  
-and `route -n` shows us a matching routing entry so that the containers inside this net are available to the outer world: ```10.244.1.0      0.0.0.0         255.255.255.0   U     0      0        0 cbr0```
+and `route -n` shows us a matching routing entry so that the containers inside this net are available to the outer world: 
+```
+10.244.1.0      0.0.0.0         255.255.255.0   U     0      0        0 cbr0
+```
  
 Each node in the cluster has a different CIDR for cbr0.
  
@@ -32,7 +37,9 @@ Now, what does this mean for communication to containers from outside of the nod
  - However, our K8s Node has additional routing information that tells it to forward every packet it receives for the docker subnet to the bridge network. By this, every host can communicate with the containers as long as it sends the packets to the correct node.
 
 If a node does not have a specific route configured to a host, it will try to access it over the default gateway. `route -n` also tells us about this:
-``` 0.0.0.0         172.20.0.1      0.0.0.0         UG    0      0        0 eth0 ```
+```
+0.0.0.0         172.20.0.1      0.0.0.0         UG    0      0        0 eth0 
+```
 
 This means that if we don't have any other routing information, we are routing to 172.20.0.1, which is the gateway of the VPC.
 With this configuration on each node, all calls to Containers that have to cross node boundaries will be forwarded to the VPC. K8s still has to do is tell the default gateway which subnet is connected to which node so it routes the packages correctly. Basically, this is the same configuration as above, but now on VPC level instead of the nodes.
@@ -64,23 +71,30 @@ The networking for services happens on each Node in kube-proxy. Kube-Proxy has t
 For knowing when a service has been created, modified or deleted, kube-proxy polls the API server for change events and holds an internal service map with all service information to determine what to change in order to render the service correctly to routing rules. 
 
 The services are rendered as NAT rules on the nodes, so `iptables -t nat -L` will show us what's configured exactly. We will get a lot of rules that resemble all the services in the cluster, but in essence this example shows what's going on:
-``` Chain KUBE-MARK-MASQ (58 references)  
+``` 
+Chain KUBE-MARK-MASQ (58 references)  
 target     prot opt source               destination
-MARK       all  --  anywhere             anywhere             MARK or 0x4000```
-
-``` Chain KUBE-SEP-7ZAB4MEUNQGISTVW (1 references)
+MARK       all  --  anywhere             anywhere             MARK or 0x4000
+```
+```
+Chain KUBE-SEP-7ZAB4MEUNQGISTVW (1 references)
 target     prot opt source               destination
 KUBE-MARK-MASQ  all  --  aws-ip.aws-region.internal  anywhere             /* kube-system/kubernetes-dashboard: */
-DNAT       tcp  --  anywhere             anywhere             /* kube-system/kubernetes-dashboard: */ tcp to:10.244.1.11:9090```
+DNAT       tcp  --  anywhere             anywhere             /* kube-system/kubernetes-dashboard: */ tcp to:10.244.1.11:9090
+```
 
-``` Chain KUBE-SERVICES (2 references)
+``` 
+Chain KUBE-SERVICES (2 references)
 target     prot opt source               destination
 KUBE-MARK-MASQ  tcp  -- !pod-hosting-node-ip.pod-hosting-node-region.internal/16  ip-10-0-91-181.aws-region.compute.internal  /* kube-system/kubernetes-dashboard: cluster IP */ tcp dpt:http
-KUBE-SVC-XGLOHA7QRQ3V22RZ  tcp  --  anywhere             ip-10-0-91-181.aws-region.compute.internal  /* kube-system/kubernetes-dashboard: cluster IP */ tcp dpt:http```
+KUBE-SVC-XGLOHA7QRQ3V22RZ  tcp  --  anywhere             ip-10-0-91-181.aws-region.compute.internal  /* kube-system/kubernetes-dashboard: cluster IP */ tcp dpt:http
+```
 
-```Chain KUBE-SVC-XGLOHA7QRQ3V22RZ (1 references)
+```
+Chain KUBE-SVC-XGLOHA7QRQ3V22RZ (1 references)
 target     prot opt source               destination
-KUBE-SEP-7ZAB4MEUNQGISTVW  all  --  anywhere             anywhere             /* kube-system/kubernetes-dashboard: */```
+KUBE-SEP-7ZAB4MEUNQGISTVW  all  --  anywhere             anywhere             /* kube-system/kubernetes-dashboard: */
+```
 
 There are also a some more general roules that handle prerouting, postrouting and general access to the Docker and Kubernetes nets but since I'm no expert for NAT or networking, I'll spare us the embarrassment of doing a deep dive. The three chains above are the ones that do the work of mapping the internal clusterIP of the service (in this case 10.0.91.181) to the Kubernetes net IP of the Pod (in this case 10.244.1.11) for the kubernetes-dashboard service. The third one determines if we have to route internally or externally, the fourth one can be used for further access controll (I guess), the second one does the actual mapping to the Pod(s) and the first one masks the calls.
 
