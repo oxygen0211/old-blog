@@ -24,9 +24,7 @@ On a node level, all containers started within the cluster get attached to a doc
 ```
 inet addr:10.244.1.1  Bcast:0.0.0.0  Mask:255.255.255.0
 ```
-Each node in the cluster has a different CIDR for cbr0. 
- 
-`route -n` shows us a matching routing entry so that the containers inside the net are available to the outer world: 
+Each node in the cluster has a different CIDR for cbr0. `route -n` shows us a matching routing entry so that the containers inside the net are available to the outer world: 
 ```
 10.244.1.0      0.0.0.0         255.255.255.0   U     0      0        0 cbr0
 ```
