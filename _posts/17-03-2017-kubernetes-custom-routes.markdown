@@ -64,27 +64,27 @@ The networking for services happens on each Node in kube-proxy. Kube-Proxy has t
 For knowing when a service has been created, modified or deleted, kube-proxy polls the API server for change events and holds an internal service map with all service information to determine what to change in order to render the service correctly to routing rules. 
 
 The services are rendered as NAT rules on the nodes, so `iptables -t nat -L` will show us what's configured exactly. We will get a lot of rules that resemble all the services in the cluster, but in essence this example shows what's going on:
-`Chain KUBE-MARK-MASQ (58 references)
-target     prot opt source               destination
-MARK       all  --  anywhere             anywhere             MARK or 0x4000`
+`Chain KUBE-MARK-MASQ (58 references)`
+`target     prot opt source               destination`
+`MARK       all  --  anywhere             anywhere             MARK or 0x4000`
 
-`Chain KUBE-SEP-7ZAB4MEUNQGISTVW (1 references)
-target     prot opt source               destination
-KUBE-MARK-MASQ  all  --  aws-ip.aws-region.internal  anywhere             /* kube-system/kubernetes-dashboard: */
-DNAT       tcp  --  anywhere             anywhere             /* kube-system/kubernetes-dashboard: */ tcp to:10.244.1.11:9090`
+`Chain KUBE-SEP-7ZAB4MEUNQGISTVW (1 references)`
+`target     prot opt source               destination`
+`KUBE-MARK-MASQ  all  --  aws-ip.aws-region.internal  anywhere             /* kube-system/kubernetes-dashboard: */`
+`DNAT       tcp  --  anywhere             anywhere             /* kube-system/kubernetes-dashboard: */ tcp to:10.244.1.11:9090`
 
-`Chain KUBE-SERVICES (2 references)
-target     prot opt source               destination
-KUBE-MARK-MASQ  tcp  -- !pod-hosting-node-ip.pod-hosting-node-region.internal/16  ip-10-0-91-181.aws-region.compute.internal  /* kube-system/kubernetes-dashboard: cluster IP */ tcp dpt:http
-KUBE-SVC-XGLOHA7QRQ3V22RZ  tcp  --  anywhere             ip-10-0-91-181.aws-region.compute.internal  /* kube-system/kubernetes-dashboard: cluster IP */ tcp dpt:http`
+`Chain KUBE-SERVICES (2 references)`
+`target     prot opt source               destination`
+`KUBE-MARK-MASQ  tcp  -- !pod-hosting-node-ip.pod-hosting-node-region.internal/16  ip-10-0-91-181.aws-region.compute.internal  /* kube-system/kubernetes-dashboard: cluster IP */ tcp dpt:http'
+'KUBE-SVC-XGLOHA7QRQ3V22RZ  tcp  --  anywhere             ip-10-0-91-181.aws-region.compute.internal  /* kube-system/kubernetes-dashboard: cluster IP */ tcp dpt:http`
 
-`Chain KUBE-SVC-XGLOHA7QRQ3V22RZ (1 references)
-target     prot opt source               destination
-KUBE-SEP-7ZAB4MEUNQGISTVW  all  --  anywhere             anywhere             /* kube-system/kubernetes-dashboard: */`
+`Chain KUBE-SVC-XGLOHA7QRQ3V22RZ (1 references)`
+`target     prot opt source               destination'
+'KUBE-SEP-7ZAB4MEUNQGISTVW  all  --  anywhere             anywhere             /* kube-system/kubernetes-dashboard: */`
 
 There are alo a some more general roules that handle prerouting, postrouting and general access to the Docker and Kubernetes nets but since I'm no expert for NAT or networking, I'll spare us the embarrassment of doing a deep dive. The three chains above are the ones that do the work of mapping the internal clusterIP of the service (in this case 10.0.91.181) to the Kubernetes net IP of the Pod (in this case 10.244.1.11) for the kubernetes-dashboard service. The third one determines if we have to route internally or externally, the fourth one can be used for further access controll (I guess), the second one does the actual mapping to the Pod(s) and the first one masks the calls.
 
-##Concept for a custom route mechanism
+## Concept for a custom route mechanism
 For our routing to the VPN IPs, we want to add similar rules for the VPN net that point to the VPN Server pod.
 
 The probably least intrusive way of adding our desired route to the cluster network is building an own component that combines the basic mechanisms described above and adds addional routes accordingly. The approach we take for this is the following:
