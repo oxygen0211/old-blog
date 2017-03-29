@@ -18,23 +18,22 @@ Let's look at how the single Kubernetes components interact on a networking poin
 ### Node container network and VPC
 This is the least abstract level of our Pods. How do the actual containers running on the nodes expose their connections to the outside? And how are packets routed between Pods on different nodes?
  
-Especially for the second part of this question the answer varies on the cluster networking solution you are using (e.g. Flannel has other configurations than VPC), but the basic principles should be the same (or at least similar).
+Especially for the question the answer may vary based on the cluster networking solution you are using (e.g. Flannel has other configurations than VPC), but the basic principles should be the same (or at least similar).
  
-On a node level, all containers started within the cluster get attached to a bridge docker net (cbr0). `Ifconfig` for the interfaces shows us an interface which is configured something like this:
+On a node level, all containers started within the cluster get attached to a docker bridge network (cbr0). `Ifconfig` shows us an interface which is configured something like this:
 ```
 inet addr:10.244.1.1  Bcast:0.0.0.0  Mask:255.255.255.0
 ```
+Each node in the cluster has a different CIDR for cbr0. 
  
-and `route -n` shows us a matching routing entry so that the containers inside this net are available to the outer world: 
+`route -n` shows us a matching routing entry so that the containers inside the net are available to the outer world: 
 ```
 10.244.1.0      0.0.0.0         255.255.255.0   U     0      0        0 cbr0
 ```
  
-Each node in the cluster has a different CIDR for cbr0.
- 
 Now, what does this mean for communication to containers from outside of the nodes?
- - Containers are running inside their own subnet on a bridge interface of the host, isolated from non-container components. Just as in a standard docker installation.
- - However, our K8s Node has additional routing information that tells it to forward every packet it receives for the docker subnet to the bridge network. By this, every host can communicate with the containers as long as it sends the packets to the correct node.
+ - Containers are running inside their own subnet on a bridge interface of the host, isolated from non-container components,  just as in a standard docker installation.
+ - Our K8s Node has additional routing information that tells it to forward every packet it receives for the docker subnet to the bridge network. By this, every host can communicate with the containers as long as it sends the packets to the correct node.
 
 If a node does not have a specific route configured to a host, it will try to access it over the default gateway. `route -n` also tells us about this:
 ```
