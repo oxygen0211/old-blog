@@ -107,3 +107,34 @@ The probably least intrusive way of adding our desired route to the cluster netw
 This allows us to very precisely control which routes will be added and makes us independent from any other components. Since we will be making the routing on a node level, the same way we are doing the kubernetes container net to the outer world, we will be independent from infrastructure and cluster networking solutions, so we should be able to use this in a broad number of different setups.
 
 I haven't started implementation yet but plan to start with it soon. The sourcecode for this is located at https://github.com/oxygen0211/kubernetes-net-router. Contributions are very welcome.
+
+## UPDATE
+After working a bit more on this and talking to other Kubernetes users who have a bit more experience than me, I came to the conclusion that running an OpenVPN server inside the Kubernetes cluster is too much state. In the past we had some of the highly dymanic features of Kubernetes, like dynamic scaling of both nodes and pods, blocked because we alway had this OpenVPN server pod which has a lot of long-living sessions sticking to it and should not be rescheduled by any means since it would always cause our customer devices to loose connectivity for a while. Instead, I went for running the Server on an own VM (but still encapsulated in a Docker container) which is not part of the K8s-cluster but is in the same VPC and Subnet, just like we do with other stateful applications such as databases, block- or object stores. I recommend to everyone working with Kubernetes and similar projects to follow the general rule that every state that needs to survive a pod- (or, to speak in more general terms, a container-) restart should not be stored within the K8s-cluster.
+
+This means we don't need to develop and maintain another component but we still have to set up routing correctly. This can be done with the mechanisms described above.
+
+### Routing to the Openvpn-Server VM
+First of all, we need to enable the machines within the VPC - especially our K8s-Nodes that still run our proxy and all other stateless services - to route calls to VPN connected hosts to our OpenVPN server machine. Since on machine level we have already a catch-all that forwards calls to any unknown host to the VPC, we just need to configure a route on VPC level. This is done in the VPC management console in route tables. Just add a route with your VPN CIDR (e.g. "10.8.0.0/16") and target it to the eth0 interface of your VPN Server VM (this is found in EC2 management console in the instance details).
+
+### Routing to the Docker container
+We are still running our VPN Server as Docker container. This i mainly to save time and nerves on different ends. First, we have this already running in production, so by reusing the container, we don't have the risk of accidentally configuring something that breaks client connectivity - or at least we can be more secure what change broke compatibility if we do something. Second, we have it easier to do modifications and testing on the server before updating it in production, just update the container config, rebuild, test it locally, in stating/preproduction, etc. and then update the Server, maybe even in a rolling update way - more on this in an own post soon.
+
+However, this means that we need to configure our server to cross interface boundaries internally. If we look at our Server VM's routes with ```route -n```, we see something like this:
+
+```
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         172.20.0.1      0.0.0.0         UG    0      0        0 eth0
+172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
+172.18.0.0      0.0.0.0         255.255.0.0     U     0      0        0 br-<random string>
+172.20.0.0      0.0.0.0         255.255.255.0   U     0      0        0 eth0
+```
+
+What we want to do now is to add a new route that will forward calls to our VPN net to the VPN Docker container. By utilizing ```docker inspect <container name or ID>```, you can find that one out and by calling ```route add -net <VPN-Net IP, e.g 10.8.0.0> netmask <VPN-Net mask, e.g. 255.255.0.0> gw <container IP>```, we will add routing of the calls to the container. Not that I conciously didn't specify a device on ```route add```, this is to let route choose the correct one on its own. We should now be able to ping the VPN server on its VPN IP, in that case we can expect it to 10.8.0.1, if that doesn't work, check the IP with ```ifconfig``` inside the container first. Of course, this should be persistent over machine reboots (we hope this doesn't happen too often for the reasons state above, but we don't want to have additional trouble with missing routes once it happened), so we need to add this to the interface configuration. Since our VPN server VM is running on Ubuntu 16.04, this will be done by adding ```post-up route add -net <VPN-Net IP, e.g 10.8.0.0> netmask <VPN-Net mask, e.g. 255.255.0.0> gw <container IP>``` to our eth0 interface definition in /etc/network/interfaces.d/50-cloud-init.cfg. 
+
+If our container is not running on the host net (which has caused the VPN net to not work properly anymore in my tries), Docker will block all communication to the container except for the forwarded ports. To overcome this, we have to add additinoal rules to iptables ``` sudo iptables -A DOCKER -j ACCEPT -p all -d <container hostname or IP, check with already existing rules for forwarded ports> ```
+
+You see, we have some hard coding and manual steps here, but for now, this is OK since we explictly want this VM and container to be long running and do not expect it to set itself up fully automatically. We also have to provision our VM somehow, so this is just another step following Docker installation, adding the VPN Server configuration, starting the container, etc. In our case, there's an Ansible playbook handling this (closed source, sorry) and I would recommend anyone to do automate such infrastructure deployments some how (#infrastructureascode #DevOps) with Puppet, Check, Ansible or similar or creating your own VM image if you prefer that. Once your machine gets terminated or crashes beyond repair otherwise, you will be thankful for it. 
+
+### Routing to VPN clients inside the container
+OK, back to topic. As you see, by now we can ping our server but no connected host. This is because there's still a route missing inside our container, so we will update our VPN server container to do this.
+
