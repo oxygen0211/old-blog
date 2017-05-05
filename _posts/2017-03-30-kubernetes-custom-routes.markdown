@@ -116,6 +116,8 @@ This means we don't need to develop and maintain another component but we still 
 ### Routing to the Openvpn-Server VM
 First of all, we need to enable the machines within the VPC - especially our K8s-Nodes that still run our proxy and all other stateless services - to route calls to VPN connected hosts to our OpenVPN server machine. Since on machine level we have already a catch-all that forwards calls to any unknown host to the VPC, we just need to configure a route on VPC level. This is done in the VPC management console in route tables. Just add a route with your VPN CIDR (e.g. "10.8.0.0/16") and target it to the eth0 interface of your VPN Server VM (this is found in EC2 management console in the instance details).
 
+Additionally, source/dest check needs to be disabled on the instance. This can be done in the instance view in ec2 console via actions->network-change source/dest check.
+
 ### Routing to the Docker container
 We are still running our VPN Server as Docker container. This i mainly to save time and nerves on different ends. First, we have this already running in production, so by reusing the container, we don't have the risk of accidentally configuring something that breaks client connectivity - or at least we can be more secure what change broke compatibility if we do something. Second, we have it easier to do modifications and testing on the server before updating it in production, just update the container config, rebuild, test it locally, in stating/preproduction, etc. and then update the Server, maybe even in a rolling update way - more on this in an own post soon.
 
