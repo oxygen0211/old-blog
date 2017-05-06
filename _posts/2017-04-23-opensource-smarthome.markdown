@@ -1,22 +1,22 @@
 # The open source centric smart home
 
-Over the last two years or so, I adopted some smart home devices one by one. By now, I have connected devices for different aspects of my day to day life that serve me well.
+Over the course last two years or so, I got myself some smart home devices. By now, I have connected devices for different aspects of my day to day life that I really enjoy using.
 However, when using multiple systems, you get to a point where you get annoyed by having to control every device with a different App and want scenes and configurations across different devices. 
-After having some discussions on twitter [and being explicitly asked about it](https://twitter.com/oxygen0211/status/855782919725514754), I want to share the my opinion about the devices I own and the approach I took for combining them.
+After having some discussions on twitter [and being explicitly asked about sharing my experiences](https://twitter.com/oxygen0211/status/855782919725514754), I want to do so now and outline the approach I took for combining them.
 
 ## Covered usecases
-As a developer seeing products and frameworks come and go, I didn't want to use one system for everything that will lock me in and want to at least have the option to some hacking on the systems on my own, so I want the components and software in use to be open source or at least to have a relatively open API.
-And since I am living in a rented apartment, pulling wires to all the rooms and installing components into the surge cabinet is not an option. Through this, the older systems based on a central Bus like KNX are not that interresting to me and I tend to go more towards the new, wireless and specialized products. 
-Of course, this makes interconnection more difficult, but since wanted some automation across all devices, this was my main focus over the last couple weeks. For automation, I wanted things like:
+As a developer seeing products and frameworks come and go, I didn't want to use one commercial system for everything so I won't have to rely about on the willingness of one comany and want to at least have the option to some hacking on the systems on my own. This means I want all of my components and software to be open source or at least to have a relatively open API.
+And since I am living in a rented apartment, pulling wires to all the rooms and installing components into the surge cabinet is not an option. Through this, the older systems based on a central Bus like KNX etc. are not that interresting to me and I tend to go more towards the new, wireless and specialized platforms. 
+Of course, this makes interconnection more difficult, but since wanted some automation across all devices, this was my main focus over the last couple of weeks. For automation, I wanted things like:
 
 * React to time and weather (turn on the lights on sunset)
 * Centrally manage scenes (Light color and brightness, music, ...) for certain occasions (TV watching, Party, Going to bed,...)
-* React to me being present or not (make sure the lights are off when I'm gone)
-* Make my apartment react to events happening online (change the light color when I'm mentioned on Twitter, react to data in my fitness Apps)
+* Have my home react to me being present or not (make sure the lights are off when I'm gone)
+* Make my apartment react to events happening online (change the light color when I'm mentioned on Twitter, react to data in my fitness Apps,...)
 * Adapt all smart devices based on operation of another one (set a dedicated light scene when turning on the TV)
 * Start routines including multiple devices (wake me up using Music AND Light)
 
-While the implementation of some of these automations is still work in progress, I managed to find a combination as a platform that allows me to do all that. Here's how it's built.
+While the implementation of some of these automations is still work in progress, I managed to find a combination of hardware and software that acts as a platform that allows me to do all of that. Here's how it's built.
 
 ## Devices
 
